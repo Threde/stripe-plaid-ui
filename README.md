@@ -1,4 +1,4 @@
-### stripe-plaid-node quickstart
+### stripe-plaid-node
 
 [Plaid Stripe Integration Docs](https://plaid.com/docs/link/stripe/)
 [Plaid Link Quickstart Guide](https://plaid.com/docs/quickstart)
