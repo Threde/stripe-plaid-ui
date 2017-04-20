@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ACH Payment</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.4.0/css/bulma.min.css">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+</head>
+<body>
+  <section class="hero is-primary">
+    <div class="hero-body">
+      <div class="container">
+        <div class="media">
+          <div class="media-left">
+            <figure class="image is-64x64">
+              <img src="http://threde.com/img/logo.png" alt="Threde logo">
+            </figure>
+          </div>
+          <div class="media-content">
+            <h1 class="title ">
+              ACH INSTANT DEBIT AUTHORIZATION
+            </h1>
+            <h2 class="subtitle">
+              Threde LLC
+            </h2>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="columns">
+    <div class="column">
+    </div>
+    <div class="column is-one-third">
+
+      <div id="ach" style="padding-top: 40px;">
+
+        <div class="panel">
+          <section id="customer-info">
+            <div class="panel-heading">
+              Customer Information
+            </div>
+            <div class="panel-block">
+              <div class="media">
+                <div class="media-left">
+                  <figure id="logo" class="image is-48x48">
+                  </figure>
+                </div>
+                <div class="media-content">
+                  <p id="customer-description" class="title is-4"></p>
+                  <p id="customer-email" class="subtitle is-6"></p>
+                </div>
+              </div>
+            </div>
+            <div class="panel-block">
+              <button id="plaid-link" class="button is-primary is-fullwidth">Link Bank Account</button>
+            </div>
+          </section>
+          <section id="bank-info" style="display: none;">
+            <div class="panel-heading">
+              Bank Account Information
+            </div>
+            <div class="panel-block">
+              <div>
+                <p id="bank-institution"></p>
+                <p id="bank-account-name" class="subtitle"></p>
+              </div>
+            </div>
+            <div class="panel-block">
+              <button id="verify-bank" class="button is-primary is-outlined is-fullwidth">Verify Bank Account</button>
+            </div>
+          </section>
+          <section id="agreement" style="display: none;">
+            <div class="panel-heading">
+              Terms & Conditons
+            </div>
+            <div class="panel-block">
+              <p>By clicking on the button below, "Add Bank Account", you authorize Threde, LLC ("Threde")
+                to debit your account at the indicated financial institution selected
+                on a recurring basis (not for one-time payments), in order to pay
+                invoices due. And, agree to the Stripe & Plaid services agreements.
+                <br>
+                <br>
+                Stripe's service agreement<br>
+                <small><a href="https://stripe.com/legal/" target="_blank">https://stripe.com/legal/</a></small>
+                <br>
+                Plaid's service agreement<br>
+                <small><a href="https://plaid.com/legal/#plaid-services" target="_blank">https://plaid.com/legal/#plaid-services</a></small>
+              </p>
+            </div>
+            <footer class="panel-block">
+              <button id="add-bank" class="button is-primary is-outlined is-fullwidth">Add Bank Account</button>
+            </footer>
+          </section>
+        </div>
+
+      </div>
+
+    </div>
+    <div class="column">
+    </div>
+  </div>
+
+<footer class="footer">
+  <div class="container">
+    <div class="content has-text-centered">
+      © 2017 Threde LLC
+    </div>
+  </div>
+</footer>
+
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.3/jquery.min.js"></script>
+    <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+    <script src="https://js.stripe.com/v2/"></script>
+
+    <script>
+    // TODO: replace jquery with react
+    // This is all shity and I need to do code cleaning
+    function getParameterByName(name, url) {
+        if (!url) url = window.location.href;
+        name = name.replace(/[\[\]]/g, "\\$&");
+        var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+            results = regex.exec(url);
+        if (!results) return null;
+        if (!results[2]) return '';
+        return decodeURIComponent(results[2].replace(/\+/g, " "));
+    };
+
+    // Notifications
+    function notification(msg) {
+      if(msg.error==undefined) {
+        $('#ach').append('<div class="notification is-primary"><button class="delete"></button>' + msg.success + '</div>').hide().fadeIn();
+      } else {
+        $('#ach').append('<div class="notification is-danger"><button class="delete"></button>' + msg.error + '</div>').hide().fadeIn();
+      };
+
+      $('.delete').on('click', function() {
+         $('.notification').fadeOut()
+       });
+      setTimeout(function(){$('.notification').fadeOut()}, 5000);
+      $("html, body").animate({ scrollTop: $(document).height() }, 1000);
+    }
+
+    var customer = null,
+        invoices = null;
+
+    $.get('/get_customer_info', function(data) {
+        if(data.error){
+          $('#ach').hide();
+        }
+        customer = data;
+        $('#customer-description').text(data.description);
+        $('#customer-email').text(data.email);
+        if(customer.metadata.logo !== undefined) {
+          $('#logo').append('<img src="' + customer.metadata.logo + '" alt="Image">')
+        };
+
+    });
+
+    $.get('/get_customer_invoices', function(data) {
+        invoices = data;
+    });
+
+    (function($) {
+      var handler = Plaid.create({
+          apiVersion: 'v2',
+          clientName: 'ACH Payment',
+          env: '<%= PLAID_ENV %>',
+          product: ['auth', 'transactions'],
+          key: '<%= PLAID_PUBLIC_KEY %>',
+          selectAccount: true,
+          onSuccess: function(public_token, metadata) {
+              // The onSuccess function is called when the user has successfully
+              // authenticated and selected an account to use.
+              //
+              // When called, you will send the public_token and the selected
+              // account ID, metadata.account_id, to your backend app server.
+              //
+              // sendDataToBackendServer({
+              //   public_token: public_token,
+              //   account_id: metadata.account_id
+              // });
+              console.log('Public Token: ' + public_token);
+              console.log('Customer-selected account ID: ' + metadata.account_id);
+              // Update UI
+              $('#bank-institution').text(metadata.institution.name);
+              $('#bank-account-name').text(metadata.account.name);
+              // Get Access Token
+              $.post('/get_access_token', {public_token: public_token, account_id: metadata.account_id},
+                function(response){
+                  notification(response);
+                }
+              );
+              // Show bank acount information
+              $('#bank-info').fadeIn();
+          },
+          onExit: function(err, metadata) {
+            // The user exited the Link flow.
+            if (err != null) {
+              // The user encountered a Plaid API error prior to exiting.
+            }
+            // metadata contains information about the institution
+            // that the user selected and the most recent API request IDs.
+            // Storing this information can be helpful for support.
+          },
+      });
+      // Set Plaid Access Token
+      var accessToken = getParameterByName('access_token');
+      if (accessToken != null) {
+          $.post('/set_access_token', {access_token: accessToken}, function(data) {
+            notification(data);
+          });
+      }
+      // Plaid Link Button
+      $('#plaid-link').on('click', function() {
+         handler.open();
+       });
+
+      $('#verify-bank').on('click', function() {
+        var that = $(this);
+        that.addClass('is-loading');
+        $.post('/verify_bank', function(data){
+          notification(data);
+          that.removeClass('is-loading');
+          if(!data.error){
+            that.removeClass('is-outlined');
+            that.addClass('is-primary');
+            that.append('<i class="fa fa-check" aria-hidden="true"></i>');
+            $('#agreement').fadeIn();
+          }
+        });
+      })
+
+      $('#add-bank').on('click', function() {
+        var that = $(this);
+        that.addClass('is-loading');
+        $.post('/add_bank', function(data) {
+          notification(data);
+          that.removeClass('is-loading');
+          if(!data.error){
+            that.removeClass('is-outlined');
+            that.addClass('is-primary');
+            that.append('<i class="fa fa-check" aria-hidden="true"></i>');
+
+            setTimeout( function(){
+              $('body').append('<div class="modal is-active"><div class="modal-background"></div><div class="modal-content"><div class="box"><div class="content"><p>ACH Account access is complete. You may now close this window. Please contact us if you have any questions or concerns, thank you.</p></div></div></div></button></div>')
+            }, 5000);
+          }
+        });
+      })
+    })(jQuery);
+    </script>
+</body>
+</html>
