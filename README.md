@@ -26,3 +26,8 @@ node index.js
 # TO see Token response on client, otherwise run node --inspect index.js
 $.get('/test', function(d) {console.log(d);});
 ```
+We will be adding features as we go:
+- customer login or create an account
+- customer set default payment method
+- customer select invoices to pay
+- customer set subscriptions
